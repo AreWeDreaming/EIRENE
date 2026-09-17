@@ -1938,9 +1938,15 @@ C  SUBSET of some surface's range, not an exact match.
           ENDIF
           FOUND = .FALSE.
           DO ISTS = 1, NSTSI
+C  NDT is 0-indexed while Block-3A's IRPTA/IRPTE fixed-dimension value
+C  is 1-indexed for the same physical surface position -- confirmed
+C  empirically across every target in ITER_2360_0.95He+0.05H_40MW
+C  (NDT always exactly one less than IRPTA/IRPTE) and consistent with
+C  the ADITYA conformal_limiter case's known-working state
+C  (NDT=10 pairs with the corrected IRPTA1=11).
             IF (NTIN(IT,IPRT).GE.IRPTA(ISTS,IDIM_FREE) .AND.
      .          NTEN(IT,IPRT).LE.IRPTE(ISTS,IDIM_FREE) .AND.
-     .          NDT(IT,IPRT).EQ.IRPTA(ISTS,IDIM_FIX)) THEN
+     .          NDT(IT,IPRT)+1.EQ.IRPTA(ISTS,IDIM_FIX)) THEN
               FOUND = .TRUE.
             ENDIF
           END DO
