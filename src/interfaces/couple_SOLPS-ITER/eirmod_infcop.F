@@ -277,7 +277,7 @@ C
       INTEGER, SAVE :: IO29, IO, IMF
       INTEGER :: N, I, J, K, L, IX, IY, IXI, IXE, IXNI, JPLS, JUN,
      I           IREAD, IS, IS1, ISC, ISC1, ISC2, ISCS, ISTS, ISTR,
-     I           IT, IN, IP, IP1, IR, IR1, IPRT, NTGPRI,
+     I           IT, IN, IP, IP1, IR, IR1, IPRT, IISO, NTGPRI,
      I           ICOADD, ICOSCR, ICOG, ICOU, IDUMMY, IERROR,
      I           ITRI, NBAR, NUMSI, NBARSI,
      I           IUNIN_SAVE
@@ -296,7 +296,7 @@ C
       EXTERNAL :: EIRENE_HEADNG, EIRENE_LEER, EIRENE_EXIT_OWN,
      .            EIRENE_GEOMD, EIRENE_GEOUSR,
      .            EIRENE_INDMAP, EIRENE_PLASM, EIRENE_SNEIGH,
-     .            EIRENE_MASJ1, EIRENE_MASJ2, EIRENE_MASJ5
+     .            EIRENE_MASJ1, EIRENE_MASJ2, EIRENE_MASJ4, EIRENE_MASJ5
 #ifdef NO_JSON
       EXTERNAL :: EIRENE_MASAGE
 #endif
@@ -335,9 +335,9 @@ cdr
       ntrfrm = 0
 
       if (.not.allocated(eapl0)) then
-         allocate (eapl0(nrad))
-         allocate (empl0(nrad))
-         allocate (eipl0(nrad))
+        allocate (eapl0(nrad))
+        allocate (empl0(nrad))
+        allocate (eipl0(nrad))
       end if
 C
       IF (.NOT.LSHORT.AND.ITIMV.LE.1) THEN
@@ -356,6 +356,8 @@ C
       ENDIF
 C
 C READING BLOCK 14 FROM FORMATTED INPUT FILE (IUNIN) FINISHED
+C
+      IF (.NOT.LSHORT.AND.ITIMV.LE.1) CALL EIRENE_CHECK_BLOCK14_VS_3A
 C
 C
 C DEFINE ADDITIONAL TALLIES FOR COUPLING (UPDATED IN SUBR. UPTCOP
@@ -852,12 +854,23 @@ C  FIRST: RADIAL SURFACES
           IF (IR.EQ.INUMP(ISTS,1)) THEN
             IR1=IR+1
             IF (IR1.GT.NR1ST) IR1=IR-1
+            IF (NNISO.GT.0) THEN
+              IF (NNCUT.LE.2) THEN
+                DO IISO = 1, NNISO
+                  IF (IR.EQ.NYISO1(IISO).AND.IR.GT.1) IR1=IR-1
+                END DO
+              ELSE IF (NNISO.GT.1) THEN
+                DO IISO = 2, NNISO
+                  IF (IR.EQ.NYISO1(IISO).AND.IR.GT.1) IR1=IR-1
+                END DO
+              ENDIF
+            END IF
             IXNI=IR !VK
             DO IP=IRPTA(ISTS,2),IRPTE(ISTS,2)-1
-              IF (IR.LT.NR1ST) THEN
-                CURPOI => HEADS(IR,IP)%P
-              ELSE
+              IF (IR1.EQ.IR-1) THEN ! we do not have a top neighbour
                 CURPOI => HEADS(IR1,IP)%P
+              ELSE
+                CURPOI => HEADS(IR,IP)%P
               ENDIF
               DO WHILE (ASSOCIATED(CURPOI))
                 ITRI=CURPOI%TRIANGLE
@@ -869,20 +882,20 @@ CVKG TO FIX A BUG WITH GEOMETRY
      f                      YTRIAN(NECKE(IS,ITRI)),
      f                      XPOL(IXNI,IP),YPOL(IXNI,IP),
      f                      XPOL(IXNI,IP+1),YPOL(IXNI,IP+1))) THEN
-                  IF(ISC1.GT.0) THEN
-                    ISC2=IS
-                  ELSE
-                    ISC1=IS
+                    IF(ISC1.GT.0) THEN
+                      ISC2=IS
+                    ELSE
+                      ISC1=IS
+                    END IF
                   END IF
-                END IF
-              ENDDO
+                ENDDO
 
 C  NODES ISC1 AND ISC2 OF TRIANGLE ITRI ARE LOCATED ON RADIAL SURFACE IR
 C  THAT MEANS SIDE "NUMSI" OF TRIANGLE "ITRI" BELONGS TO
 cdr NON-DEF. STD. SURFACE INMTI=NLIM+ISTS
-              IF (ISC1.GT.0.AND.ISC2.GT.0) THEN
-                NUMSI=MIN(ISC1,ISC2)
-                IF (NUMSI.EQ.1.AND.MAX(ISC1,ISC2).EQ.3) NUMSI=3
+                IF (ISC1.GT.0.AND.ISC2.GT.0) THEN
+                  NUMSI=MIN(ISC1,ISC2)
+                  IF (NUMSI.EQ.1.AND.MAX(ISC1,ISC2).EQ.3) NUMSI=3
 C
                   ICOG=ICOG+1
                   INSPAT(NUMSI,ITRI)=ICOG
@@ -920,6 +933,17 @@ cdr this next line is specific to handle snowflake cases
             ELSEIF (NPPLG.EQ.6) THEN
               IF (IP.EQ.NPOINT(2,TARGINDEX)-1) IP1=IP-1
             ENDIF
+            IF (NNISO.GT.0) THEN
+              IF (NNCUT.LE.2) THEN
+                DO IISO = 1, NNISO
+                  IF (IP.EQ.NXISO1(IISO).AND.IP.GT.1) IP1=IP-1
+                END DO
+              ELSE IF (NNISO.GT.1) THEN
+                DO IISO = 2, NNISO
+                  IF (IP.EQ.NXISO1(IISO).AND.IP.GT.1) IP1=IP-1
+                END DO
+              ENDIF
+            END IF
             IXNI=IP !VK
             DO IR=IRPTA(ISTS,1),IRPTE(ISTS,1)-1
               IF (IP1.EQ.IP-1) THEN
@@ -1096,7 +1120,6 @@ C  SET NEW, FINER GRID STRUCTURE
 cdr from now on: nr1st > n1st possible.
 cdr tbd: check array dimensions (e,g, splitting options, etc?)
 
-
 C  counter for additional cells outside original COARSE standard grid
         icoadd = NSURF_TAL
 
@@ -1201,8 +1224,9 @@ C  CARRY OUT SOME CONSISTENCY CHECKS ON NEW TRIANGULAR GRID
         DO IS=1,3
           IF (NCHBAR(IS,ITRI).EQ.0.AND.INMTI(IS,ITRI).EQ.0) THEN
             WRITE (iunout,*) ' ERROR IN INFCOP'
-            WRITE (iunout,*) ' NCHBAR,INMTI',
-     .                         NCHBAR(IS,ITRI),INMTI(IS,ITRI)
+            CALL EIRENE_MASJ4('NCHBAR, INMTI,  IXTRI,  IYTRI   ',
+     .                         NCHBAR(IS,ITRI),INMTI(IS,ITRI),
+     .                         IXTRI(ITRI),IYTRI(ITRI))
             WRITE (iunout,*) ' OPEN SIDE OF TRIANGLE ',ITRI,' SIDE ',IS
             IF (TRCGRD) THEN
               if (ixtri(itri) == 0) then
@@ -1889,6 +1913,54 @@ C
        RETURN
        END SUBROUTINE EIRENE_READ14_JSON
 #endif
+
+      SUBROUTINE EIRENE_CHECK_BLOCK14_VS_3A
+C  Independent cross-check: does each Block-14 (recycling source /
+C  target) entry's fixed radial-or-poloidal index (NDT) actually match
+C  a Block-3A (non-default standard surface, IRPTA/IRPTE) declaration
+C  covering its free-dimension range (NTIN,NTEN)?
+C  A Block-14 entry's [NTIN,NTEN] range need not equal a
+C  Block-3A surface's full extent -- one physical surface may be split
+C  into several strata -- so this only requires the range to be a
+C  SUBSET of some surface's range, not an exact match.
+      IMPLICIT NONE
+      INTEGER IT, IPRT, ISTS, IDIM_FREE, IDIM_FIX
+      LOGICAL FOUND
+
+      DO IT = 1, NTARGI
+        DO IPRT = 1, NTGPRT(IT)
+          IF (NIXY(IT,IPRT).EQ.1) THEN
+            IDIM_FREE = 1
+            IDIM_FIX  = 2
+          ELSE
+            IDIM_FREE = 2
+            IDIM_FIX  = 1
+          ENDIF
+          FOUND = .FALSE.
+          DO ISTS = 1, NSTSI
+C  NDT is 0-indexed while Block-3A's IRPTA/IRPTE fixed-dimension value
+C  is 1-indexed for the same physical surface position -- confirmed
+C  empirically across every target in ITER_2360_0.95He+0.05H_40MW
+C  (NDT always exactly one less than IRPTA/IRPTE) and consistent with
+C  the ADITYA conformal_limiter case's known-working state
+C  (NDT=10 pairs with the corrected IRPTA1=11).
+            IF (NTIN(IT,IPRT).GE.IRPTA(ISTS,IDIM_FREE) .AND.
+     .          NTEN(IT,IPRT).LE.IRPTE(ISTS,IDIM_FREE) .AND.
+     .          NDT(IT,IPRT)+1.EQ.IRPTA(ISTS,IDIM_FIX)) THEN
+              FOUND = .TRUE.
+            ENDIF
+          END DO
+          IF (.NOT.FOUND) THEN
+            WRITE (iunout,*) 'ERROR: BLOCK 14 ENTRY DOES NOT MATCH',
+     .        ' ANY BLOCK 3A NON-DEFAULT STANDARD SURFACE'
+            WRITE (iunout,*) 'ITARG,IPRT,NDT,NTIN,NTEN ',
+     .        IT,IPRT,NDT(IT,IPRT),NTIN(IT,IPRT),NTEN(IT,IPRT)
+            CALL EIRENE_EXIT_OWN(1)
+          ENDIF
+        END DO
+      END DO
+      RETURN
+      END SUBROUTINE EIRENE_CHECK_BLOCK14_VS_3A
 
       END SUBROUTINE EIRENE_IF0COP
 C
@@ -7019,7 +7091,7 @@ C  TO THE QUADRANGLE
      &   , only: N1ST, N2ND
       implicit none
       integer :: IR, IP, ITRI
-      TYPE (CELL),POINTER :: CURPOI
+      TYPE(CELL), POINTER :: CURPOI
 
       IF(.NOT.ALLOCATED(HEADS)) ALLOCATE (HEADS(N1ST,N2ND))
       DO IR=1,N1ST
